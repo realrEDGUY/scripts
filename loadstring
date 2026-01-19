@@ -1,0 +1,2 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/realrEDGUY/scripts/refs/heads/main/chatlogsv1"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/realrEDGUY/scripts/refs/heads/main/antiafkv1"))()
