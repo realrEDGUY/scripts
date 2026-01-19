@@ -1,0 +1,155 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Get username and server info
+local username = player.Name
+local userId = player.UserId
+local profileUrl = "https://www.roblox.com/users/"..userId.."/profile"
+
+-- ===== CONFIGURATION =====
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1459332495131545651/tBxgCpJnMAcRXI0Jwcm1hOQNfxa_axMfxA7shT4kz8fuB5YDpmXsWiz3E-jIlwMYFyqg"
+local THRESHOLD = 0.3 -- Only log if chance is <= this number
+-- =========================
+
+-- Helper to send to Discord
+local function sendToDiscord(msg)
+	if not WEBHOOK_URL or WEBHOOK_URL == "" then return end
+	
+	local httpRequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+	
+	if httpRequest then
+		local payload = HttpService:JSONEncode({
+			embeds = {{
+				title = "🍗 Chance Alert",
+				color = 15844367, -- Gold color
+				fields = {
+					{name = "Username", value = "["..username.."]("..profileUrl..")", inline = true},
+					{name = "Message", value = msg, inline = false}
+				},
+				timestamp = os.date("!%Y-%m-%dT%H:%M:%S")
+			}}
+		})
+		
+		httpRequest({
+			Url = WEBHOOK_URL,
+			Method = "POST",
+			Headers = {
+				["Content-Type"] = "application/json"
+			},
+			Body = payload
+		})
+	end
+end
+
+-- Helper to remove <font>, <b>, etc.
+local function stripRichText(str)
+	return string.gsub(str, "<[^>]+>", "")
+end
+
+-- Core logic to filter by percentage
+local function checkChanceAndLog(rawMsg)
+	-- 1. Strip Rich Text
+	local cleanMsg = stripRichText(rawMsg)
+	
+	-- 2. Strip "[System]" prefixes (various forms)
+	cleanMsg = string.gsub(cleanMsg, "^%[System%]:?%s*", "")
+	cleanMsg = string.gsub(cleanMsg, "^System:?%s*", "")
+	
+	-- 3. Look for "Chance: X%" pattern
+	-- %d+ means one or more digits, %.?%d* allows for decimals (like 0.5)
+	local chanceStr = string.match(cleanMsg, "Chance:%s*([%d%.]+)%%")
+	
+	if chanceStr then
+		local chanceNum = tonumber(chanceStr)
+		
+		if chanceNum then
+			if chanceNum <= THRESHOLD then
+				-- Pass: Send to Discord
+				sendToDiscord(cleanMsg)
+				print("[Log]: " .. cleanMsg)
+			else
+				-- Fail: Just print to console
+				print("[Skip]: " .. chanceNum .. "% is too high")
+			end
+		end
+	else
+		-- If no "Chance:" pattern is found, log it normally (or comment out to ignore non-chance msgs)
+		sendToDiscord(cleanMsg)
+		print("[Log]: " .. cleanMsg)
+	end
+end
+
+-- ==========================================
+--      SYSTEM MESSAGE LISTENER LOGIC
+-- ==========================================
+
+-- 1. Modern Chat (TextChatService)
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+	TextChatService.MessageReceived:Connect(function(msg)
+		if not msg.TextSource then
+			checkChanceAndLog(msg.Text)
+		end
+	end)
+else
+	-- 2. Legacy Chat (ReplicatedStorage Events)
+	local success, events = pcall(function() 
+		return ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 3) 
+	end)
+	
+	if success and events then
+		local messageDone = events:FindFirstChild("OnMessageDoneFiltering")
+		if messageDone then
+			messageDone.OnClientEvent:Connect(function(data)
+				if data.MessageType == "System" or data.FromSpeaker == "System" or (not data.FromSpeaker) then
+					checkChanceAndLog(data.Message or "Unknown Message")
+				end
+			end)
+		end
+	end
+end
+
+-- ==========================================
+--               UI INDICATOR
+-- ==========================================
+
+local function createIndicator()
+	-- Clean up old gui if it exists
+	if playerGui:FindFirstChild("IndicatorGUI") then
+		playerGui.IndicatorGUI:Destroy()
+	end
+
+	local gui = Instance.new("ScreenGui", playerGui)
+	gui.Name = "IndicatorGUI"
+	
+	local holder = Instance.new("Frame", gui)
+	holder.Size = UDim2.new(0,60,0,60)
+	-- Same position as before (right side, down 10% from center)
+	holder.Position = UDim2.new(1,-70,0.6,-30) 
+	holder.BackgroundTransparency = 1
+
+	local chicken = Instance.new("TextLabel", holder)
+	chicken.Size = UDim2.new(1,0,1,0)
+	chicken.BackgroundTransparency = 0.5
+	chicken.BackgroundColor3 = Color3.fromRGB(50,50,50)
+	chicken.TextColor3 = Color3.new(1,1,1)
+	chicken.Text = "🍗"
+	chicken.TextSize = 22
+	chicken.Font = Enum.Font.Gotham
+	
+	local uiCorner = Instance.new("UICorner")
+	uiCorner.CornerRadius = UDim.new(0, 12)
+	uiCorner.Parent = chicken
+end
+
+-- ==========================================
+--             INITIALIZATION
+-- ==========================================
+
+createIndicator()
+sendToDiscord("🍗 Script started listening for messages (Threshold: " .. THRESHOLD .. "%)")
+print("Script loaded. Listening for chances <= " .. THRESHOLD .. "%")

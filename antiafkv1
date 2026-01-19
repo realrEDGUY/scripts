@@ -1,0 +1,20 @@
+-- Anti-AFK with random movement every 5 minutes
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+
+-- Prevent idle kick
+Players.LocalPlayer.Idled:Connect(function()
+	VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- Random movement every 5 minutes
+task.spawn(function()
+	while task.wait(300) do -- 300 seconds = 5 minutes
+		local character = Players.LocalPlayer.Character
+		if character and character:FindFirstChild("Humanoid") and character:FindFirstChild("HumanoidRootPart") then
+			local currentPos = character.HumanoidRootPart.Position
+			local randomOffset = Vector3.new(math.random(-10, 10), 0, math.random(-10, 10))
+			character.Humanoid:MoveTo(currentPos + randomOffset)
+		end
+	end
+end)
